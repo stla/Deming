@@ -72,17 +72,23 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       # draw alpha beta
       XX <- cbind(rep(1,length(y)), thetaY)
       # à améliorer : il y a une formule de cholesky pour les 2x2 - voir wiki Wishart
-      inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
+      M <- gamma2Y*B0+crossprod(XX)
+      sqrtM <- sqrt(M)
+      rho <- M[1,2]/prod(diag(sqrtM))
+      cholBn <- cbind(c(sqrtM[1,1], 0), c(rho*sqrtM[2,2], sqrt(1-rho^2)*sqrtM[2,2]))
+      inv.Bn <- chol2inv(cholBn)
+      #       inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
       Mean <- inv.Bn%*%(gamma2Y*B0%*%c(alpha0,beta0)+crossprod(XX,y))
-      S <- chol(gamma2Y*inv.Bn)
+      #S <- chol(gamma2Y*inv.Bn)
+      S <- sqrt(gamma2Y)*t(backsolve(cholBn, diag(2)))
       M <- Mean + crossprod(S,rmnormAB[,sim])
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
       # draw theta_i
-      mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
-      vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
-      mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
-      vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
+      mmean <- (gamma2Y*m + beta^2*tau2*(sumY-sizesY*alpha)/beta)/(gamma2Y + beta^2*sizesY*tau2)
+      vvar <- (gamma2Y*tau2)/(gamma2Y + beta^2*sizesY*tau2) 
+      mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
+      vvar <- (gamma2X*vvar)/(gamma2X + sizesX*vvar) 
       theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
     }    
     OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))
@@ -163,10 +169,14 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
       # draw theta_i
-      mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
-      vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
-      mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
-      vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
+#       mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
+#       vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
+#       mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
+#       vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
+      mmean <- (gamma2Y*m + beta^2*tau2*(sumY-sizesY*alpha)/beta)/(gamma2Y + beta^2*sizesY*tau2)
+      vvar <- (gamma2Y*tau2)/(gamma2Y + beta^2*sizesY*tau2) 
+      mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
+      vvar <- (gamma2X*vvar)/(gamma2X + sizesX*vvar) 
       theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
     }    
     OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))

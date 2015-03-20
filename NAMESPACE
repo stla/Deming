@@ -2,3 +2,4 @@
 
 export(Extract)
 export(deming_gibbs1)
+export(deming_gibbs2)
