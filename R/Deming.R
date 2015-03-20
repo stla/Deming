@@ -16,6 +16,7 @@ Extract <- function(sims,burnin,thin){ ## extract from simulations
 #' 
 #' Gibbs sampler with independent priors on variances
 #' 
+#'@import dplyr
 #'@export 
 deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, params="all", m=rep(0,nlevels(X$group)), tau2=1e4, aX=.1, bX=.001, aY=.1, bY=.001, alpha0=0, beta0=0, B0=diag(.0001, 2)){
   ### checks ###
@@ -103,6 +104,7 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
 #' 
 #' Gibbs sampler with independent priors on one variance and the variances ratio
 #' 
+#'@import dplyr
 #'@export 
 deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, params="all", m=rep(0,nlevels(X$group)), tau2=1e4, aX=.1, bX=.001, a=.1, b=.001, alpha0=0, beta0=0, B0=diag(.0001, 2)){
   ### checks ###
@@ -161,7 +163,6 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       gamma2Y <- kappa2*gamma2X
       # draw alpha beta
       XX <- cbind(rep(1,length(y)), thetaY)
-      # à améliorer : il y a une formule de cholesky pour les 2x2 - voir wiki Wishart
       inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
       Mean <- inv.Bn%*%(gamma2Y*B0%*%c(alpha0,beta0)+crossprod(XX,y))
       S <- chol(gamma2Y*inv.Bn)
