@@ -90,3 +90,89 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
   OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
   return(OUT)
 }
+
+
+
+#' Gibbs sampler 2 for Deming regression
+#' 
+#' Gibbs sampler with independent priors on one variance and the variances ratio
+#' 
+#'@export 
+deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, params="all", m=rep(0,nlevels(X$group)), tau2=1e4, aX=.1, bX=.001, a=.1, b=.001, alpha0=0, beta0=0, B0=diag(.0001, 2)){
+  ### checks ###
+  allparams <- c("alpha", "beta", "gamma2X", "kappa2", "theta")
+  if(identical(params,"all")){
+    params <- allparams
+  }else{
+    if(any(!is.element(params, allparams))) stop("non valid parameters")
+  }
+  if(B0[1,2]!=B0[2,1] || det(B0)<=0) stop("B0 is not symmetric positive")
+  ##### data 
+  X <- arrange(X, group); Y <- arrange(Y, group)
+  x <- X$x; y <- Y$y
+  if(nlevels(X$group) != nlevels(Y$group)) stop("")
+  N <- nlevels(X$group)
+  ####### storing simulations  ###########
+  gamma2X.sims <- kappa2.sims <- alpha.sims <- beta.sims <- rep(NA,nsims)
+  theta.sims   <-  array(NA,dim=c(N,nsims))
+  OUT <- vector("list",length=nchains)
+  # 
+  shapeX <- nrow(X)/2+nrow(Y)/2+aX
+  shapeYX <- nrow(Y)/2+a
+  sizesX <- X %>% group_by(group) %>% summarise(sizes=n()) %>% .$sizes
+  sizesY <- Y %>% group_by(group) %>% summarise(sizes=n()) %>% .$sizes
+  sumX <- X %>% group_by(group) %>% summarise(sum=sum(x)) %>% .$sum
+  sumY <- Y %>% group_by(group) %>% summarise(sum=sum(y)) %>% .$sum
+  
+  ###### run Gibbs' sampler
+  for(chain in 1:nchains){ 
+    ### initial values - generates random initial values ###
+    # theta
+    theta <- Xmeans <- X %>% group_by(group) %>% summarise(mean=mean(x)) %>% .$mean
+    # alpha and beta
+    Ymeans <- Y %>% group_by(group) %>% summarise(mean=mean(y)) %>% .$mean
+    ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
+    alpha <- ab[1]; beta <- ab[2]
+    # variances 
+    gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
+      .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
+    kappa2 <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
+      .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01)) %>%
+      divide_by(gamma2X)
+    ### simulations ##
+    rgammaX <- rgamma(nsims, shapeX, 1)
+    rgammaYX <- rgamma(nsims, shapeYX, 1)
+    rmnormAB <- matrix(rnorm(2*nsims), nrow=2)
+    rmnormTheta <- matrix(rnorm(N*nsims), nrow=N)
+    for(sim in 1:nsims){
+      thetaX <- rep(theta, times=sizesX)
+      thetaY <- rep(theta, times=sizesY)
+      # draw gamma2X
+      gamma2X.sims[sim] <- gamma2X <- 
+        ((crossprod(x-thetaX) + crossprod(y-(alpha+beta*thetaY))/kappa2)[1,]/2+bX)/rgammaX[sim]
+      # draw kappa2
+      kappa2.sims[sim] <- kappa2 <- (crossprod(y-(alpha+beta*thetaY))[1,]/gamma2X/2+b)/rgammaYX[sim]
+      gamma2Y <- kappa2*gamma2X
+      # draw alpha beta
+      XX <- cbind(rep(1,length(y)), thetaY)
+      # à améliorer : il y a une formule de cholesky pour les 2x2 - voir wiki Wishart
+      inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
+      Mean <- inv.Bn%*%(gamma2Y*B0%*%c(alpha0,beta0)+crossprod(XX,y))
+      S <- chol(gamma2Y*inv.Bn)
+      M <- Mean + crossprod(S,rmnormAB[,sim])
+      alpha.sims[sim] <- alpha <- M[1]
+      beta.sims[sim] <- beta <- M[2]
+      # draw theta_i
+      mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
+      vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
+      mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
+      vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
+      theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
+    }    
+    OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))
+  } # end simulated chain
+  OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
+  return(OUT)
+}
+
+
