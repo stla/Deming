@@ -62,6 +62,16 @@ xx <- rbindlist(
   Map(function(out, i) as.data.table(out)[, "Chain":=rep(i,.N)], OUT, seq_along(OUT))
   )[, "Iteration":=seq_len(.N), by=Chain]
 
+library(data.table)
+f <- function(stack=FALSE){
+  OUT <- list(A=list(a=1:2,b=3:4), B=list(a=5:6,b=7:8))
+  if(stack) OUT <- rbindlist(
+    Map(function(out, i) as.data.table(out)[, "Chain":=rep(i,.N)], OUT, seq_along(OUT))
+  )
+  return(OUT)
+}
+
+
 save(SIMULATIONS, SUMMARIES, file="SIMULATIONS_COVERAGE2.Rdata")
 
 # faire cover sup et inf 
