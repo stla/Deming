@@ -124,8 +124,9 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
 #' Gibbs sampler with independent priors on one variance and the variances ratio
 #' 
 #'@import dplyr
+#'@import data.table
 #'@export 
-deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, params="all", m=rep(0,nlevels(X$group)), tau2=1e4, aX=.1, bX=.001, a=.1, b=.001, alpha0=0, beta0=0, B0=diag(.0001, 2)){
+deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stack=TRUE, params="all", m=rep(0,nlevels(X$group)), tau2=1e4, aX=.1, bX=.001, a=.1, b=.001, alpha0=0, beta0=0, B0=diag(.0001, 2)){
   ### checks ###
   allparams <- c("alpha", "beta", "gamma2X", "kappa2", "theta")
   if(identical(params,"all")){
@@ -140,8 +141,6 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
   if(nlevels(X$group) != nlevels(Y$group)) stop("")
   N <- nlevels(X$group)
   ####### storing simulations  ###########
-  gamma2X.sims <- kappa2.sims <- alpha.sims <- beta.sims <- rep(NA,nsims)
-  theta.sims   <-  array(NA,dim=c(N,nsims))
   OUT <- vector("list",length=nchains)
   # 
   shapeX <- nrow(X)/2+nrow(Y)/2+aX
@@ -150,9 +149,11 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
   sizesY <- Y %>% group_by(group) %>% summarise(sizes=n()) %>% .$sizes
   sumX <- X %>% group_by(group) %>% summarise(sum=sum(x)) %>% .$sum
   sumY <- Y %>% group_by(group) %>% summarise(sum=sum(y)) %>% .$sum
-  
+  iterations <- subset(seq_len(nsims), seq_len(nsims)%%thin==0 & seq_len(nsims)>burnin)
   ###### run Gibbs' sampler
   for(chain in 1:nchains){ 
+    gamma2X.sims <- kappa2.sims <- alpha.sims <- beta.sims <- rep(NA,nsims)
+    theta.sims   <-  array(NA,dim=c(N,nsims))
     ### initial values - generates random initial values ###
     # theta
     theta <- Xmeans <- X %>% group_by(group) %>% summarise(mean=mean(x)) %>% .$mean
@@ -189,19 +190,37 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
       # draw theta_i
-#       mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
-#       vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
-#       mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
-#       vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
+      #       mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
+      #       vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
+      #       mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
+      #       vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
       mmean <- (gamma2Y*m + beta^2*tau2*(sumY-sizesY*alpha)/beta)/(gamma2Y + beta^2*sizesY*tau2)
       vvar <- (gamma2Y*tau2)/(gamma2Y + beta^2*sizesY*tau2) 
       mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
       vvar <- (gamma2X*vvar)/(gamma2X + sizesX*vvar) 
       theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
-    }    
+    }
+    alpha.sims <- alpha.sims[iterations]
+    beta.sims <- beta.sims[iterations]
+    gamma2X.sims <- gamma2X.sims[iterations]
+    kappa2.sims <- kappa2.sims[iterations]
+    theta.sims <- theta.sims[,iterations]
+    if(stack && "theta"%in%params) theta.sims <- setNames(as.data.table(t(theta.sims)), 
+                                                          sprintf(paste0("theta_%0", floor(log10(N)+1), "d"), 1:N))
     OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))
   } # end simulated chain
-  OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
+  #OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
+  if(stack){
+    if("theta"%in%params){
+      Theta <- rbindlist(
+        Map(function(out, i) out[["theta"]], OUT, seq_along(OUT))
+      )
+    }
+    OUT <- rbindlist(
+      Map(function(out, i) as.data.table(out[subset(params, params!="theta")])[, "Chain":=rep(i,.N)], OUT, seq_along(OUT))
+    )[, "Iteration":=iterations, by=Chain]
+    if("theta"%in%params) OUT <- cbind(OUT,Theta)
+  }
   return(OUT)
 }
 
