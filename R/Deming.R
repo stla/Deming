@@ -199,7 +199,7 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
       mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
       vvar <- (gamma2X*vvar)/(gamma2X + sizesX*vvar) 
       theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
-    }
+    } # end Gibbs sampler
     alpha.sims <- alpha.sims[iterations]
     beta.sims <- beta.sims[iterations]
     gamma2X.sims <- gamma2X.sims[iterations]

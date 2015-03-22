@@ -10,16 +10,27 @@ theta0 <- 1:N  # true theta_i
 gammaX0 <- sqrt(4); 
 Lambdas <- c(0.5, 1, 2, 4)
 
-nsims <- 1000
-SIMULATIONS <- SUMMARIES <- vector(mode = "list", length = nsims)
+nRuns <- 2
+SIMULATIONS <- SUMMARIES <- vector(mode = "list", length = nRuns)
+
+# iterations in Gibbs sampler
+nchains <- 2
+nsims <- 10
+burnin <- 3
+iters <- nsims-burnin
+# monitored parameters
+params <- c("alpha","beta")
+
+BIGOUT <- data.table(expand.grid(Run=factor(1:nRuns),lambda=Lambdas))[, sapply(params, function(x) as.double(rep(NA,nchains*iters)), simplify=FALSE), by="Run,lambda"]
+setkey(BIGOUT, Run, lambda)
+# BIGOUT[sim==1 & lambda ==1, identity(params):=dd] 
 
 
-for(num in 1:nsims){  
-  SUMMARIES[[num]] <- vector(mode = "list", length = length(Lambdas))
+for(run in 1:nRuns){   
+  SUMMARIES[[run]] <- vector(mode = "list", length = length(Lambdas))
   for(l in 1:length(Lambdas)){ 
     # simulated data
-    lambda <- Lambdas[l]
-    gammaY0 <- sqrt(lambda)*gammaX0
+    gammaY0 <- sqrt(Lambdas[l])*gammaX0
     X<-Y<-array(NA,dim=c(N,J))
     for(i in 1:N){ 
       for(j in 1:J){
@@ -29,23 +40,31 @@ for(num in 1:nsims){
     }
     X <- stack(data.frame(t(X))) %>% setNames(c("x","group"))
     Y <- stack(data.frame(t(Y))) %>% setNames(c("y","group"))
-    # monitored parameters
-    params <- c("alpha", "beta", "gamma2X", "kappa2")
     # Gibbs sampler
-    OUT <- deming_gibbs2(X, Y, nsims=4000, burnin=500, params=params)
-    # outputs
-    SIMS <- lapply(setNames(params,params), 
-                   function(param) do.call(abind, lapply(OUT, 
-                                                         function(out) out[[param]])))
-    alpha.sims <- as.numeric(SIMS[["alpha"]])
-    beta.sims <- as.numeric(SIMS[["beta"]])
-    means <- sapply(SIMS[params], mean) 
-    quantiles <- sapply(SIMS[params], quantile, probs = c(0.025, 0.975)) 
-    posterior.summaries <- rbind(means,quantiles)
-    SIMULATIONS[[num]][[l]] <- list(alpha=alpha.sims,beta=beta.sims)
-    SUMMARIES[[num]][[l]] <- posterior.summaries
+    OUT <- deming_gibbs2(X, Y, nchains=nchains, nsims=nsims, burnin=burnin, params=params)
+    BIGOUT[.(run,Lambdas[l]), names(OUT):=OUT]  
+#     # outputs
+#     SIMS <- lapply(setNames(params,params), 
+#                    function(param) do.call(abind, lapply(OUT, 
+#                                                          function(out) out[[param]])))
+#     alpha.sims <- as.numeric(SIMS[["alpha"]])
+#     beta.sims <- as.numeric(SIMS[["beta"]])
+#     means <- sapply(SIMS[params], mean) 
+#     quantiles <- sapply(SIMS[params], quantile, probs = c(0.025, 0.975)) 
+#     posterior.summaries <- rbind(means,quantiles)
+#     SIMULATIONS[[run]][[l]] <- list(alpha=alpha.sims,beta=beta.sims)
+#     SUMMARIES[[run]][[l]] <- posterior.summaries
   }
 }
+
+
+long <- reshape2::melt(BIGOUT, id.vars=c("Run","lambda"), measure.vars=params)
+
+summaries <- long[, list(mean=mean(value), lwr=quantile(value, 2.5/100), upr=quantile(value, 97.5/100)), 
+     by="Run,lambda,variable"]
+
+library(ggplot2)
+ggplot(summaries, aes(x=Run,y=lwr)) + geom_point() + facet_grid(lambda~.)
 
 # faire aussi un truc qui transforme la matrice theta - a ou plutôt faire ça dans gibbs() ?
 
