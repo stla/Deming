@@ -157,12 +157,14 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
     Ymeans <- Y %>% group_by(group) %>% summarise(mean=mean(y)) %>% .$mean
     ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
     alpha <- ab[1]; beta <- ab[2]
-#     # variances - no need
-#     gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
-#       .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
-#     kappa2 <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
-#       .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01)) %>%
-#       divide_by(gamma2X)
+    # variances - need mais plante si pas de repeat
+    gamma2X <- ifelse(length(x)>N, X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
+      .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01)), 
+      1/rgamma(1,aX,bX))
+    kappa2 <- ifelse(length(x)>N, Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
+      .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01)) %>%
+      divide_by(gamma2X),
+      1/rgamma(1,a,b))
     ### simulations ##
     rgammaX <- rgamma(nsims, shapeX, 1)
     rgammaYX <- rgamma(nsims, shapeYX, 1)
@@ -216,3 +218,55 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
 }
 
 
+#' Frequentist estimates (no repeats)
+#' 
+#' @export
+deming.estim <- function(x,y,lambda=1){  # lambda=sigmayÂ²/sigmaxÂ²
+  n <- length(x)
+  my <- mean(y)
+  mx <- mean(x)
+  SSDy <- crossprod(y-my)[,]
+  SSDx <- crossprod(x-mx)[,]
+  SPDxy <- crossprod(x-mx,y-my)[,] # 
+  A <- sqrt((SSDy - lambda*SSDx)^2 + 4*lambda*SPDxy^2)
+  # rq : si SPDxy^2 proche de SSx*SSy alors A proche de SSDy+lambda*SSDx
+  # (c'est--dire x et y fort corrÃ©lÃ©s)
+  # donc beta peu sensible lambda 
+  B <- SSDy - lambda*SSDx
+  beta <- (B + A) / (2*SPDxy)
+  alpha <- my - mx*beta
+  sigma.uu <- ( (SSDy + lambda*SSDx) - A ) /(2*lambda) / (n-1)
+  s.vv <- crossprod(y-my-beta*(x-mx))/(n-2) # = (lambda+beta^2)*sigma.uu * (n-1)/(n-2)
+  # formule gilard et iles (mÃ©moire bernard)
+  sbeta2.Fuller <- (SSDx*SSDy-SPDxy^2)/n/(SPDxy^2/beta^2)
+  sbeta.Fuller <- sqrt(sbeta2.Fuller)
+  # standard error alpha Fuller 
+  salpha2.Fuller <- s.vv/n + mx^2*sbeta2.Fuller  
+  salpha.Fuller <- sqrt(salpha2.Fuller)
+  # 
+  V <- rbind( c(salpha2.Fuller, -mx*sbeta2.Fuller), c(-mx*sbeta2.Fuller, sbeta2.Fuller) )  
+  return(list(alpha=alpha,beta=beta, salpha.Fuller=salpha.Fuller, sbeta.Fuller=sbeta.Fuller, 
+              V=V, 
+              sigma=sqrt(sigma.uu*(n-1)/(n-2)))
+  ) # seul sigma est sensible lambda dans cas corrÃ©lÃ©
+}
+
+#' Frequentist confidence interval
+#' 
+#' @export
+deming.ci <- function(x, y, lambda=1, level=95/100){
+  n <- length(x)
+  fit <- deming.estim(x,y, lambda=lambda) 
+  sigma <- fit$sigma
+  V <- fit$V
+  a <- fit$alpha
+  b <- fit$beta
+  t <- qt(level,df=n-2)
+  out <- rbind(
+    a=c(a, a + c(-1,1)*t*sqrt(V[1,1])),
+    b=c(b, b + c(-1,1)*t*sqrt(V[2,2]))
+  )
+  colnames(out) <- c("estimate", "lower", "upper")
+  names(dimnames(out)) <- c("parameter", "")
+  return(out)
+}

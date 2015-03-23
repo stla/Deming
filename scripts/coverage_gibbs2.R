@@ -72,6 +72,7 @@ summaries <- long[, list(mean=mean(value), lwr=quantile(value, 2.5/100), upr=qua
      by="Run,lambda,parameter"][, length:=(upr-lwr)]
 saveRDS(summaries, file="SUMMARIES_gibbs2.rds")
 
+summaries <- readRDS("SUMMARIES_gibbs2.rds")
 trueparams <- data.table(lambda=Lambdas)[, list(alpha=alpha, beta=beta, gamma2X=gammaX0^2, kappa2=lambda), by=lambda] %>% 
   reshape2::melt(id.vars="lambda", variable.name="parameter", factorsAsStrings = TRUE)
 setkey(trueparams, parameter)
