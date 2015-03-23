@@ -15,13 +15,13 @@ Lambdas <- c(0.5, 1, 2, 4)
 alpha <- 0
 beta <- 1
 
-nRuns <- 10
+nRuns <- 1000
 SIMULATIONS <- SUMMARIES <- vector(mode = "list", length = nRuns)
 
 # iterations in Gibbs sampler
 nchains <- 2
-nsims <- 600
-burnin <- 100
+nsims <- 6000
+burnin <- 1000
 iters <- nsims-burnin
 # monitored parameters
 params <- c("alpha","beta","gamma2X","kappa2")
@@ -66,15 +66,17 @@ for(run in 1:nRuns){
 saveRDS(BIGOUT, file="SIMULATIONS_gibbs2.rds")
 
 long <- reshape2::melt(BIGOUT, id.vars=c("Run","lambda"), measure.vars=params, variable.name="parameter")
+rm(BIGOUT)
 
 summaries <- long[, list(mean=mean(value), lwr=quantile(value, 2.5/100), upr=quantile(value, 97.5/100)), 
      by="Run,lambda,parameter"][, length:=(upr-lwr)]
+saveRDS(summaries, file="SUMMARIES_gibbs2.rds")
 
 trueparams <- data.table(lambda=Lambdas)[, list(alpha=alpha, beta=beta, gamma2X=gammaX0^2, kappa2=lambda), by=lambda] %>% 
-  reshape2::melt(id.vars="lambda", variable.name="parameter")
+  reshape2::melt(id.vars="lambda", variable.name="parameter", factorsAsStrings = TRUE)
 setkey(trueparams, parameter)
 
-summaries <- merge(summaries, trueparams, by=c("lambda","parameter"))
+summaries <- merge(summaries, trueparams, by=c("lambda","parameter"))[, "lambda":=factor(lambda)]
 
 intervals <- reshape2::melt(summaries, id.vars=c("Run","lambda","parameter"), measure.vars=c("lwr","upr"), 
                   variable.name="bound")
@@ -88,12 +90,22 @@ covers <- summaries[, list(
   lwr=mean(lwr<value),
   upr=mean(upr>value),
   twosided=mean(lwr<value & upr>value)
-  ), by="lambda,parameter"] %>% reshape2::melt(id.vars=c("lambda","parameter"), variable.name="coverage") %>%
-  merge(data.table(coverage=c("lwr","upr","twosided"), nominal=c(.975,.975,.95)), by="coverage")
+  ), by="lambda,parameter"] %>% reshape2::melt(id.vars=c("lambda","parameter"), 
+                                               variable.name="coverage", factorsAsStrings = FALSE) %>%
+  merge(data.table(coverage=factor(c("lwr","upr","twosided")), nominal=c(.975,.975,.95)), 
+        by="coverage") %>% 
+  .[,"coverage":=relevel(coverage,"twosided")]
 
 
 ggplot(covers, aes(x=lambda, y=value)) + geom_point() + 
-  facet_grid(parameter~coverage) + geom_hline(aes(yintercept=nominal, color="red", linetype="dashed"))
+  facet_grid(coverage~parameter, scales="free_y") + geom_hline(aes(yintercept=nominal), color="red", linetype="dashed")
+
+ggplot(summaries, aes(x=lwr,y=upr, color=lambda)) + geom_point() +
+  facet_grid(.~parameter)
+
+means <-  recast(data.frame(summaries), lambda+Run~parameter, 
+                 measure.var=c("mean"), id.var=c("lambda","Run","parameter"))
+ggplot(means, aes(x=alpha,y=beta,color=lambda)) + geom_point()
 
 # faire aussi un truc qui transforme la matrice theta - a ou plutôt faire ça dans gibbs() ?
 # 

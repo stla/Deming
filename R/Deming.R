@@ -43,7 +43,7 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
   sumX <- X %>% group_by(group) %>% summarise(sum=sum(x)) %>% .$sum
   sumY <- Y %>% group_by(group) %>% summarise(sum=sum(y)) %>% .$sum
   iterations <- subset(seq_len(nsims), seq_len(nsims)%%thin==0 & seq_len(nsims)>burnin)
-  ###### run Gibbs' sampler
+  ###### run Gibbs sampler
   for(chain in 1:nchains){ 
     gamma2X.sims <- gamma2Y.sims <- alpha.sims <- beta.sims <- rep(NA,nsims)
     theta.sims   <-  array(NA,dim=c(N,nsims))
@@ -54,11 +54,11 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
     Ymeans <- Y %>% group_by(group) %>% summarise(mean=mean(y)) %>% .$mean
     ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
     alpha <- ab[1]; beta <- ab[2]
-    # variances 
-    gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
-      .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
-    gamma2Y <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
-      .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01))
+#     # variances - no need
+#     gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
+#       .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
+#     gamma2Y <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
+#       .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01))
     ### simulations ##
     rgammaX <- rgamma(nsims, shapeX, 1)
     rgammaY <- rgamma(nsims, shapeY, 1)
@@ -73,16 +73,13 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       gamma2Y.sims[sim] <- gamma2Y <- (crossprod((y-(alpha+beta*thetaY)))[1,]/2+bY)/rgammaY[sim]
       # draw alpha beta
       XX <- cbind(rep(1,length(y)), thetaY)
-      # à améliorer : il y a une formule de cholesky pour les 2x2 - voir wiki Wishart
       M <- gamma2Y*B0+crossprod(XX)
       sqrtM <- sqrt(M)
       rho <- M[1,2]/prod(diag(sqrtM))
       cholBn <- cbind(c(sqrtM[1,1], 0), c(rho*sqrtM[2,2], sqrt(1-rho^2)*sqrtM[2,2]))
-      inv.Bn <- chol2inv(cholBn)
-      #       inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
+      inv.Bn <- chol2inv(cholBn) # same as chol2inv(chol(gamma2Y*B0+crossprod(XX)))
       Mean <- inv.Bn%*%(gamma2Y*B0%*%c(alpha0,beta0)+crossprod(XX,y))
-      #S <- chol(gamma2Y*inv.Bn)
-      S <- sqrt(gamma2Y)*t(backsolve(cholBn, diag(2)))
+      S <- sqrt(gamma2Y)*t(backsolve(cholBn, diag(2))) # satisfies S'S=gamma2Y*inv.Bn
       M <- Mean + crossprod(S,rmnormAB[,sim])
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
@@ -92,7 +89,7 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
       mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
       vvar <- (gamma2X*vvar)/(gamma2X + sizesX*vvar) 
       theta.sims[,sim] <- theta <- mmean + sqrt(vvar)*rmnormTheta[,sim]  
-    }
+    } # end Gibbs sampler
     alpha.sims <- alpha.sims[iterations]
     beta.sims <- beta.sims[iterations]
     gamma2X.sims <- gamma2X.sims[iterations]
@@ -102,7 +99,6 @@ deming_gibbs1 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, para
                                      sprintf(paste0("theta_%0", floor(log10(N)+1), "d"), 1:N))
     OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))
   } # end simulated chain
-  #OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
   if(stack){
     if("theta"%in%params){
       Theta <- rbindlist(
@@ -161,12 +157,12 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
     Ymeans <- Y %>% group_by(group) %>% summarise(mean=mean(y)) %>% .$mean
     ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
     alpha <- ab[1]; beta <- ab[2]
-    # variances 
-    gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
-      .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
-    kappa2 <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
-      .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01)) %>%
-      divide_by(gamma2X)
+#     # variances - no need
+#     gamma2X <- X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
+#       .$resid %>% sum %>% divide_by(length(x)-N) %>% multiply_by(rnorm(1,1,.01))
+#     kappa2 <- Y %>% group_by(group) %>% mutate(means=mean(y), resid=(y-means)^2) %>% 
+#       .$resid %>% sum %>% divide_by(length(y)-N) %>% multiply_by(rnorm(1,1,.01)) %>%
+#       divide_by(gamma2X)
     ### simulations ##
     rgammaX <- rgamma(nsims, shapeX, 1)
     rgammaYX <- rgamma(nsims, shapeYX, 1)
@@ -190,10 +186,6 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
       # draw theta_i
-      #       mmean <- (gamma2Y/beta^2) %>% { (.*m + tau2*(sumY-sizesY*alpha)/beta)/(. + sizesY*tau2) }
-      #       vvar <-  (gamma2Y/beta^2) %>% { (.*tau2)/(. + sizesY*tau2) }
-      #       mmean <- gamma2X %>% { (.*mmean + vvar*sumX)/(. + sizesX*vvar) }
-      #       vvar <- gamma2X %>% { (.*vvar)/(. + sizesX*vvar) }
       mmean <- (gamma2Y*m + beta^2*tau2*(sumY-sizesY*alpha)/beta)/(gamma2Y + beta^2*sizesY*tau2)
       vvar <- (gamma2Y*tau2)/(gamma2Y + beta^2*sizesY*tau2) 
       mmean <- (gamma2X*mmean + vvar*sumX)/(gamma2X + sizesX*vvar)
@@ -209,7 +201,6 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
                                                           sprintf(paste0("theta_%0", floor(log10(N)+1), "d"), 1:N))
     OUT[[chain]] <- eval(parse(text=sprintf("list(%s)", paste0(params, sprintf("=%s.sims", params), collapse=","))))
   } # end simulated chain
-  #OUT <- lapply(OUT, function(out) lapply(out, function(sims) Extract(sims,burnin,thin)))
   if(stack){
     if("theta"%in%params){
       Theta <- rbindlist(
