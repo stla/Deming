@@ -44,15 +44,16 @@ simulations <- function(){
       Y[i,j] <- rnorm(1,alpha+beta*theta0[i],gammaY0)  
     }
   }
-  Xs <- stack(data.frame(t(X))) %>% setNames(c("x","group"))
-  Ys <- stack(data.frame(t(Y))) %>% setNames(c("y","group"))
+#   Xs <- stack(data.frame(t(X))) %>% setNames(c("x","group"))
+#   Ys <- stack(data.frame(t(Y))) %>% setNames(c("y","group"))
   return(list(X=X,Y=Y))
 }
 
 params <- c("alpha", "beta")
-nRuns <- 1000
+nRuns <- 3000
 OUT <-  data.table(expand.grid(Run=factor(1:nRuns),method=c("JAGS", "least-squares", "Deming")))[, sapply(params, function(x) as.double(NA), simplify=FALSE), by="Run,method"]
 setkey(OUT, Run, method)
+
 for(run in 1:nRuns){
   sims <- simulations()
   X <- sims$X; Y <- sims$Y
@@ -81,22 +82,49 @@ for(run in 1:nRuns){
   
 }
 
+saveRDS(OUT, "JAGS_COMPARISONS.rds")
 
 ggplot(OUT, aes(x=Run, y=alpha, color=method)) + geom_point()
 setkey(OUT, method)
+
+# alpha
 par(pty="s")
+layout(t(1:2))
 plot(OUT[.("JAGS")]$alpha, OUT[.("least-squares")]$alpha, 
      asp=1, pch=19, col="blue",  
-     xlab="JAGS", ylab=NA)
+     xlab="JAGS", ylab="least-squares",
+     main="estimates of alpha")
 abline(0,1)
-points(OUT[.("JAGS")]$alpha, OUT[.("Deming")]$alpha, 
-      pch=19, col="red")
+plot(OUT[.("JAGS")]$alpha, OUT[.("Deming")]$alpha, 
+     asp=1, pch=19, col="red",  
+     xlab="JAGS", ylab="Deming")
+abline(0,1)
+# beta
+layout(t(1:2))
+par(pty="s")
+plot(OUT[.("JAGS")]$beta, OUT[.("least-squares")]$beta, 
+     asp=1, pch=19, col="blue",  
+     xlab="JAGS", ylab="least-squares",
+     main="estimates of beta")
+abline(0,1)
+plot(OUT[.("JAGS")]$beta, OUT[.("Deming")]$beta, 
+     asp=1, pch=19, col="red",  
+     xlab="JAGS", ylab="Deming")
+abline(0,1)
 
 # faire plutôt ggpairs et density pour voir meilleur - ggpairs chiant pour abline(0,1)
 
-ggplot(OUT, aes(x=alpha, color=method)) + geom_density()
-ggplot(OUT, aes(x=beta, color=method)) + geom_density()
+ggdata <- reshape2::melt(OUT, measure.vars=c("alpha","beta"))
+gg1 <- ggplot(OUT, aes(x=alpha, color=method)) + geom_density() +
+  geom_vline(xintercept=0) + theme(legend.position="top")
+gg2 <- ggplot(OUT, aes(x=beta, color=method)) + geom_density() +
+  geom_vline(xintercept=1) + theme(legend.position="top")   
+gridExtra::grid.arrange(gg1,gg2,ncol=2)
 
+
+ggplot(ggdata, aes(x=value, color=method)) + geom_density() +
+  geom_vline(xintercept=0) + 
+  facet_grid(variable~., scales="free_y", "free_x")
 
 MethComp::Deming(Xs$x, Ys$y) # pas de sens car on peut permuter
 
