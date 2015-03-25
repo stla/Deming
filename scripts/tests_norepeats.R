@@ -25,13 +25,15 @@ for(i in 1:N){
 X <- stack(data.frame(t(X))) %>% setNames(c("x","group")) 
 Y <- stack(data.frame(t(Y))) %>% setNames(c("y","group"))
 
-deming.ci(X$x,Y$y,lambda=1)
+deming.ci(X$x,Y$y,lambda=lambda)
 
 OUT <- deming_gibbs2(X, Y, a=1000, b=1000, nchains=2, nsims=6000, burnin=1000)
 plot(density(OUT$alpha))
 mean(OUT$alpha)
+mean(OUT$beta)
 quantile(OUT$alpha, c(2.5,97.5)/100)
-confint(lm(Y$y~I(X$x))) # !!!! idem !!!
+quantile(OUT$beta, c(2.5,97.5)/100)
+confint(lm(Y$y~I(X$x))) # !!!! idem !!! => j'ai modifié l'étape (alpha,beta) en Deming.. estimates ok mais trop serré
 
 plot(OUT$gamma2X)
 plot(OUT$kappa2)

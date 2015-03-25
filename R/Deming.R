@@ -155,7 +155,8 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
     theta <- Xmeans <- X %>% group_by(group) %>% summarise(mean=mean(x)) %>% .$mean
     # alpha and beta
     Ymeans <- Y %>% group_by(group) %>% summarise(mean=mean(y)) %>% .$mean
-    ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
+    #ab <- coef(lm(Ymeans*rnorm(N,1,.01) ~ I(Xmeans*rnorm(N,1,.01))))
+    ab <- deming.estim(Xmeans,Ymeans)[c("alpha","beta")] %>% unlist
     alpha <- ab[1]; beta <- ab[2]
     # variances - need mais plante si pas de repeat
     gamma2X <- ifelse(length(x)>N, X %>% group_by(group) %>% mutate(means=mean(x), resid=(x-means)^2) %>% 
@@ -183,8 +184,9 @@ deming_gibbs2 <- function(X, Y, nsims=5000, nchains=2, burnin=1000, thin=1, stac
       XX <- cbind(rep(1,length(y)), thetaY)
       inv.Bn <-  chol2inv(chol(gamma2Y*B0+crossprod(XX)))
       Mean <- inv.Bn%*%(gamma2Y*B0%*%c(alpha0,beta0)+crossprod(XX,y))
-      S <- chol(gamma2Y*inv.Bn)
-      M <- Mean + crossprod(S,rmnormAB[,sim])
+#       S <- chol(gamma2Y*inv.Bn)
+#       M <- Mean + crossprod(S,rmnormAB[,sim])
+      M <- deming.estim(theta,Ymeans,lambda=kappa2)[c("alpha","beta")] %>% unlist
       alpha.sims[sim] <- alpha <- M[1]
       beta.sims[sim] <- beta <- M[2]
       # draw theta_i
